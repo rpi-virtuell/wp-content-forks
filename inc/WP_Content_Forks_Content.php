@@ -162,7 +162,14 @@ class WP_Content_Forks_Content
         }
     }
 
-
+    /**
+     * add import page on page menu
+     *
+     * @since   0.0.1
+     * @access  public
+     * @static
+     * @return  void
+     */
     static public function add_submenu_page() {
         add_submenu_page(
             'edit.php?post_type=page',
@@ -174,6 +181,14 @@ class WP_Content_Forks_Content
         );
     }
 
+    /**
+     * add import page on post menu
+     *
+     * @since   0.0.1
+     * @access  public
+     * @static
+     * @return  void
+     */
     static public function add_submenu_post() {
         add_submenu_page(
             'edit.php',
@@ -186,7 +201,14 @@ class WP_Content_Forks_Content
     }
 
     /**
-     * Display callback for the submenu page.
+     * import post
+     *
+     * @since   0.0.1
+     * @access  public
+     * @static
+     * @return  void
+     *
+     * @todo fix redirect
      */
     static public function import_post() {
         if ( isset( $_POST[ "githubimport" ] ) && isset( $_POST[ "wpcf_github_repo_url" ] ) ) {
@@ -202,10 +224,11 @@ class WP_Content_Forks_Content
                 'post_title'    => urldecode_deep( $repo_url_array[ 'file' ] ),
                 'post_content'  => $fileContent,
                 'post_status'   => 'draft',
+                'post_type'     => 'post'
             );
 
             $post_id = wp_insert_post( $mypost );
-            wp_redirect( admin_url( "ost.php?post=". $post_id  ."&action=edit" ) ) ;
+            wp_redirect( admin_url( "post.php?post=". $post_id  ."&action=edit" ) ) ;
             exit;
         }
         ?>
@@ -231,12 +254,57 @@ class WP_Content_Forks_Content
         <?php
     }
 
+    /**
+     * import page
+     *
+     * @since   0.0.1
+     * @access  public
+     * @static
+     * @return  void
+     */
     static public function import_page() {
+        if ( isset( $_POST[ "githubimport" ] ) && isset( $_POST[ "wpcf_github_repo_url" ] ) ) {
+            $repo_url_array = WP_Content_Forks_Core::parse_github_url(esc_attr__( $_POST[ "wpcf_github_repo_url" ]  ));
+            $client = new \Github\Client();
+            $user = wp_get_current_user();
+            $gh_user = get_user_meta($user->ID, 'wpcf_github_user', true);
+            $gh_token = get_user_meta($user->ID, 'wpcf_github_token', true);
+            $client->authenticate($gh_user, $gh_token);
+            $fileContent = $client->api('repo')->contents()->download( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'file' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'file' ] ));
+
+            $mypost = array(
+                'post_title'    => urldecode_deep( $repo_url_array[ 'file' ] ),
+                'post_content'  => $fileContent,
+                'post_status'   => 'draft',
+                'post_type'     => 'page'
+            );
+
+            $post_id = wp_insert_post( $mypost );
+            wp_redirect( admin_url( "post.php?post=". $post_id  ."&action=edit" ) ) ;
+            exit;
+        }
         ?>
         <div class="wrap">
-            <h1><?php _e( 'Import Page from Github', WP_Content_Forks::$textdomain ); ?></h1>
-            <p><?php _e( 'Here you can import an page from a github repositoy', WP_Content_Forks::$textdomain ); ?></p>
+            <form method="POST" action="">
+                <h1><?php _e( 'Import Page from Github', WP_Content_Forks::$textdomain ); ?></h1>
+                <p><?php _e( 'Here you can import an post from a github repositoy', WP_Content_Forks::$textdomain ); ?></p>
+                <?php
+
+                echo '<table class="form-table">';
+                echo '	<tr>';
+                echo '		<th><label for="wpcf_github_repo_url" class="">' . __( 'Github repo url', WP_Content_Forks::$textdomain ) . '</label></th>';
+                echo '		<td>';
+                echo '			<input type="url" id="wpcf_github_repo_url" name="wpcf_github_repo_url" class="regular-text" placeholder="' . esc_attr__( 'https://', WP_Content_Forks::$textdomain ) . '" value="' . esc_attr__( get_post_meta( $post->ID, 'wpcf_github_repo_url', true ) ) . '">';
+                echo '			<p class="description">' . __( 'URL from the github repository', WP_Content_Forks::$textdomain ) . '</p>';
+                echo '		</td>';
+                echo '	</tr>';
+                echo '</table>';
+                echo '	<input id="githubimport" class="button button-primary button-large" type="submit" value="' . __('Import', WP_Content_Forks::$textdomain) . '" name="githubimport">';
+                ?>
+            </form>
         </div>
+        <?php
+
         <?php
     }
 
