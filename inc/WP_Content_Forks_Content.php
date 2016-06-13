@@ -304,8 +304,7 @@ class WP_Content_Forks_Content
             </form>
         </div>
         <?php
-
-        <?php
+        
     }
 
 }
