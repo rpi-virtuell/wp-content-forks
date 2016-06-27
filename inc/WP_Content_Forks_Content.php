@@ -62,7 +62,7 @@ class WP_Content_Forks_Content
             echo '</div>';
         }
 
-        if ( WP_Content_Forks_Core::github_post_repo_url_exists(  $post->ID ) == false ) {
+        if ( WP_Content_Forks_Core::github_post_repo_url_exists(  $post->ID ) === false ) {
             // Form fields.
             echo '<table class="form-table">';
             echo '	<tr>';
@@ -75,8 +75,8 @@ class WP_Content_Forks_Content
             echo '</table>';
         }
 
-        if ( WP_Content_Forks_Core::github_post_repo_url_exists(  $post->ID ) == true ) {
-            if ( WP_Content_Forks_Core::github_post_revision_exists( $post->ID ) == false ) {
+        if ( WP_Content_Forks_Core::github_post_repo_url_exists(  $post->ID ) === true ) {
+            if ( WP_Content_Forks_Core::github_post_revision_exists( $post->ID ) === false ) {
                 $hash = get_post_meta( $post->ID, 'wpcf_github_commit_hash', true );
                 if ( $hash == '' ) {
                     // Form fields.
@@ -98,7 +98,32 @@ class WP_Content_Forks_Content
                     echo '</table>';
                     echo '	<input id="githubsave" class="button button-primary button-large" type="submit" value="' . __('Save on GitHub', WP_Content_Forks::$textdomain) . '" name="githubsave">';
                 } else {
-                    echo "nur noch pr oder update möglich ";
+                    if ( WP_Content_Forks_Core::check_hash( $post->ID ) === false ) {
+                        _e ("The Content on GitHub has changed.", WP_Content_Forks::$textdomain );
+
+                        $user = wp_get_current_user();
+                        $repo_url_array = WP_Content_Forks_Core::parse_github_url(esc_attr__(get_post_meta($post->ID, 'wpcf_github_repo_url', true) . '/'. $post->post_title ) );
+                        $client = new \Github\Client();
+                        $gh_user = get_user_meta($user->ID, 'wpcf_github_user', true);
+                        $gh_token = get_user_meta($user->ID, 'wpcf_github_token', true);
+                        $client->authenticate($gh_user, $gh_token);
+
+                        $fileContent = $client->api('repo')->contents()->download( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ));
+
+                        $diff_args = array(
+                            'title_left' => __( 'local content', WP_Content_Forks::$textdomain ),
+                            'title_right' => __( 'github content', WP_Content_Forks::$textdomain ),
+                        );
+                        echo wp_text_diff( $post->post_content, $fileContent , $diff_args );
+
+                        echo '	<input id="update_from_github" class="button button-primary button-large" type="submit" value="' . __('Update from GitHub', WP_Content_Forks::$textdomain) . '" name="githubupdate">';
+                    } else {
+                        echo '			<input type="text" id="wpcf_github_repo_commitmsg" name="wpcf_github_repo_commitmsg" class="regular-text" >';
+                        echo '			<p class="description">' . __('Message for commit to github', WP_Content_Forks::$textdomain) . '</p>';
+                        echo '	<input id="update_to_github" class="button button-primary button-large" type="submit" value="' . __('Commit to GitHub', WP_Content_Forks::$textdomain) . '" name="githubcommit">';
+                    }
+
+
                 }
             }
         }
@@ -150,7 +175,7 @@ class WP_Content_Forks_Content
                     $commitMessage = $_POST['wpcf_github_repo_commitmsg'];
                     try {
                         $fileInfo = $client->api('repo')->contents()->create($repo_url_array['user'], $repo_url_array['repo'], $path, $content, $commitMessage, null, $committer);
-                        update_post_meta($post_id, 'wpcf_github_commit_hash', esc_url($fileInfo['content']['sha']));
+                        update_post_meta($post_id, 'wpcf_github_commit_hash', esc_textarea($fileInfo['commit']['sha']));
 
                     } catch (Exception $e) {
                         echo 'Exception abgefangen: ', $e->getMessage(), "\n";
@@ -159,6 +184,41 @@ class WP_Content_Forks_Content
                 }
             }
 
+            if ( $_POST && $_POST[ 'githubupdate' ] && $_POST[ 'githubupdate' ] == __('Update from GitHub', WP_Content_Forks::$textdomain ) ) {
+                $user = wp_get_current_user();
+                $repo_url_array = WP_Content_Forks_Core::parse_github_url(esc_attr__(get_post_meta($post->ID, 'wpcf_github_repo_url', true) . '/'. $post->post_title ) );
+                $client = new \Github\Client();
+                $gh_user = get_user_meta($user->ID, 'wpcf_github_user', true);
+                $gh_token = get_user_meta($user->ID, 'wpcf_github_token', true);
+                $client->authenticate($gh_user, $gh_token);
+
+                $fileContent = $client->api('repo')->contents()->download( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ));
+                $my_post = array(
+                    'ID'           => $post->ID,
+                    'post_content' => $fileContent,
+                );
+                remove_action('save_post', array( 'WP_Content_Forks_Content', 'save_metabox' ) );
+                wp_update_post( $my_post );
+                add_action('save_post', array( 'WP_Content_Forks_Content', 'save_metabox' ),10 ,2 );
+                $fileInfo = $client->api('repo')->contents()->show( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ));
+                //var_dump( $fileInfo);
+                update_post_meta($post_id, 'wpcf_github_commit_hash', esc_textarea($fileInfo['sha']));
+
+            }
+            if ( $_POST && $_POST[ 'githubcommit' ] && $_POST[ 'githubcommit' ] == __('Commit to GitHub', WP_Content_Forks::$textdomain ) ) {
+                $user = wp_get_current_user();
+                $repo_url_array = WP_Content_Forks_Core::parse_github_url(esc_attr__(get_post_meta($post->ID, 'wpcf_github_repo_url', true) . '/'. $post->post_title ) );
+                $client = new \Github\Client();
+                $gh_user = get_user_meta($user->ID, 'wpcf_github_user', true);
+                $gh_token = get_user_meta($user->ID, 'wpcf_github_token', true);
+                $client->authenticate($gh_user, $gh_token);
+                $oldFile = $client->api('repo')->contents()->show( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ));
+                $committer = array('name' => $user->display_name, 'email' => $user->user_email );
+                $content = $post->post_content;
+                $commitMessage = $_POST['wpcf_github_repo_commitmsg'];
+                $fileInfo = $client->api('repo')->contents()->update( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ) , $content, $commitMessage, $oldFile['sha'], "master", $committer);
+                update_post_meta($post_id, 'wpcf_github_commit_hash', esc_textarea($fileInfo['commit']['sha']));
+            }
         }
     }
 
@@ -261,6 +321,8 @@ class WP_Content_Forks_Content
      * @access  public
      * @static
      * @return  void
+     *
+     * @todo fix redirect
      */
     static public function import_page() {
         if ( isset( $_POST[ "githubimport" ] ) && isset( $_POST[ "wpcf_github_repo_url" ] ) ) {
@@ -304,7 +366,7 @@ class WP_Content_Forks_Content
             </form>
         </div>
         <?php
-        
+
     }
 
 }

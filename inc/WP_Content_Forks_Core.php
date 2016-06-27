@@ -95,10 +95,45 @@ class WP_Content_Forks_Core
         if ( $postid == null ) {
             return false;
         }
-        if ( get_post_meta( $postid, 'wpcf_github_repo_revision', true ) != '') {
+        if ( get_post_meta( $postid, 'wpcf_github_commit_revision', true ) != '') {
             return true;
         } else {
             return false;
         }
     }
+
+    /**
+     * check if github curent revision hash identically with local hash
+     *
+     * @since   0.0.1
+     * @access  public
+     * @static
+     * @param   null $postid
+     * @return  boolean
+     */
+    static public function check_hash( $postID = null ) {
+        if ( $postID == null ) {
+            return false;
+        }
+        $localhash = get_post_meta( $postID, 'wpcf_github_commit_hash', true );
+        $repo = get_post_meta( $postID, 'wpcf_github_repo_url', true );
+        $post = get_post( $postID );
+        $user = wp_get_current_user();
+
+        $repo_url_array = WP_Content_Forks_Core::parse_github_url(esc_attr__(get_post_meta($post->ID, 'wpcf_github_repo_url', true) . '/'. $post->post_title ) );
+        $client = new \Github\Client();
+        $gh_user = get_user_meta($user->ID, 'wpcf_github_user', true);
+        $gh_token = get_user_meta($user->ID, 'wpcf_github_token', true);
+        $client->authenticate($gh_user, $gh_token);
+
+        $fileInfo = $client->api('repo')->contents()->show( $repo_url_array[ 'user' ], $repo_url_array[ 'repo' ], urldecode_deep( $repo_url_array[ 'type' ] ) .'/' .  urldecode_deep( $repo_url_array[ 'type' ] ) );
+        $remotehash =  $fileInfo[ 'sha'];
+        if ( $remotehash != $localhash ) {
+            return false;
+        } else {
+            return true;
+        }
+
+    }
+
 }
